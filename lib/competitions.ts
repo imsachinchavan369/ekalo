@@ -3,7 +3,7 @@
 import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { slugify } from "@/lib/challenges";
-import type { Competition, CompetitionInput, CompetitionStatus } from "@/types/competition";
+import type { Competition, CompetitionInput, CompetitionPhase, CompetitionStatus } from "@/types/competition";
 
 function requireDb() {
   if (!db) throw new Error("Firestore is not configured.");
@@ -18,15 +18,27 @@ export function toMillis(value: unknown) {
   return 0;
 }
 
-export function resolveCompetitionStatus(competition: Pick<Competition, "status" | "startsAt" | "endsAt">): CompetitionStatus {
+export function getCompetitionPhase(competition: Pick<Competition, "status" | "startsAt" | "endsAt" | "resultAt" | "isVisible">): CompetitionPhase {
   if (competition.status === "draft") return "draft";
+  if (competition.isVisible === false) return "draft";
   const now = Date.now();
   const startsAt = toMillis(competition.startsAt);
   const endsAt = toMillis(competition.endsAt);
-  if (startsAt && now < startsAt) return "scheduled";
-  if (endsAt && now > endsAt) return "ended";
-  if (startsAt && (!endsAt || now >= startsAt)) return "live";
-  return competition.status;
+  const resultAt = toMillis(competition.resultAt) || endsAt;
+  if (startsAt && now < startsAt) return "upcoming";
+  if (startsAt && endsAt && now >= startsAt && now < endsAt) return "live";
+  if (endsAt && resultAt && now >= endsAt && now < resultAt) return "voting_closed";
+  if (resultAt && now >= resultAt) return "ended";
+  if (competition.status === "result_pending") return "voting_closed";
+  if (competition.status === "scheduled") return "upcoming";
+  return competition.status === "live" ? "live" : "ended";
+}
+
+export function resolveCompetitionStatus(competition: Pick<Competition, "status" | "startsAt" | "endsAt" | "resultAt" | "isVisible">): CompetitionStatus {
+  const phase = getCompetitionPhase(competition);
+  if (phase === "upcoming") return "scheduled";
+  if (phase === "voting_closed") return "result_pending";
+  return phase;
 }
 
 export function normalizeCompetition(id: string, data: Record<string, unknown>): Competition {
@@ -52,6 +64,7 @@ export function normalizeCompetition(id: string, data: Record<string, unknown>):
     rulesVideoType: data.rulesVideoType === "upload" || data.rulesVideoType === "url" ? data.rulesVideoType : null,
     startsAt: data.startsAt ?? data.startAt ?? null,
     endsAt: data.endsAt ?? data.endAt ?? null,
+    resultAt: data.resultAt ?? data.resultAnnounceAt ?? data.endsAt ?? data.endAt ?? null,
     status: (data.status === "upcoming" ? "scheduled" : data.status ?? "draft") as CompetitionStatus,
     isFeatured: Boolean(data.isFeatured),
     isVisible: typeof data.isVisible === "boolean" ? data.isVisible : data.status !== "draft",
@@ -66,7 +79,7 @@ export function normalizeCompetition(id: string, data: Record<string, unknown>):
 export function listenToCompetitions(callback: (competitions: Competition[]) => void, includeDrafts = false) {
   const source = includeDrafts
     ? collection(requireDb(), "competitions")
-    : query(collection(requireDb(), "competitions"), where("isVisible", "==", true), where("status", "in", ["scheduled", "live", "ended"]));
+    : query(collection(requireDb(), "competitions"), where("isVisible", "==", true), where("status", "in", ["scheduled", "live", "result_pending", "ended"]));
   return onSnapshot(source, (snapshot) => {
     const competitions = snapshot.docs.map((item) => normalizeCompetition(item.id, item.data()));
     callback(competitions.filter((item) => includeDrafts || (item.isVisible && item.status !== "draft")));
@@ -74,7 +87,7 @@ export function listenToCompetitions(callback: (competitions: Competition[]) => 
 }
 
 export function listenToPublicCompetitionsByCategory(categorySlug: string, callback: (competitions: Competition[]) => void) {
-  return onSnapshot(query(collection(requireDb(), "competitions"), where("categorySlug", "==", categorySlug), where("isVisible", "==", true), where("status", "in", ["scheduled", "live", "ended"])), (snapshot) => {
+  return onSnapshot(query(collection(requireDb(), "competitions"), where("categorySlug", "==", categorySlug), where("isVisible", "==", true), where("status", "in", ["scheduled", "live", "result_pending", "ended"])), (snapshot) => {
     callback(
       snapshot.docs
         .map((item) => normalizeCompetition(item.id, item.data()))
@@ -96,6 +109,7 @@ export async function saveCompetition(input: CompetitionInput) {
     entryFeeAmount: input.entryFeeType === "paid" ? Number(input.entryFeeAmount) : 0,
     thumbnailUrl: input.thumbnailUrl || input.coverImageUrl,
     coverImageUrl: input.coverImageUrl || input.thumbnailUrl,
+    resultAt: input.resultAt || input.endsAt,
     status: normalizedStatus,
     entriesCount: input.entriesCount ?? 0,
     joinedCount: input.joinedCount ?? 0,
@@ -135,7 +149,8 @@ export async function saveCompetition(input: CompetitionInput) {
     allowMultipleEntries: false,
     startAt: input.startsAt,
     endAt: input.endsAt,
-    resultAnnounceAt: null,
+    resultAt: input.resultAt || input.endsAt,
+    resultAnnounceAt: input.resultAt || input.endsAt,
     scoring: { votingWeight: 30, engagementWeight: 40, qualityWeight: 30, showScoringPublicly: true },
     participation: { requireLogin: true, requireBeforeAfter: false, requireCaption: false, allowComments: true, allowLikes: true, allowVotes: true, maxVotesPerUser: 3 },
     uploadRules: {

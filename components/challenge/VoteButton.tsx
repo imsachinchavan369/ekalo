@@ -5,11 +5,15 @@ import { Button } from "@/components/ui/Button";
 import { castVote } from "@/lib/firestore";
 import { getCurrentUser } from "@/lib/auth";
 
-export function VoteButton({ challengeId, entryId, entryOwnerId }: { challengeId: string; entryId: string; entryOwnerId: string }) {
+export function VoteButton({ challengeId, entryId, entryOwnerId, disabled = false, disabledMessage = "Voting closed" }: { challengeId: string; entryId: string; entryOwnerId: string; disabled?: boolean; disabledMessage?: string }) {
   const [message, setMessage] = useState("");
   const [isVoting, setIsVoting] = useState(false);
 
   async function handleVote() {
+    if (disabled) {
+      setMessage(disabledMessage);
+      return;
+    }
     setIsVoting(true);
     setMessage("");
 
@@ -37,7 +41,7 @@ export function VoteButton({ challengeId, entryId, entryOwnerId }: { challengeId
 
   return (
     <div className="space-y-2">
-      <Button type="button" onClick={handleVote} disabled={isVoting}>{isVoting ? "Voting..." : "Vote"}</Button>
+      <Button type="button" onClick={handleVote} disabled={isVoting || disabled}>{disabled ? disabledMessage : isVoting ? "Voting..." : "Vote"}</Button>
       {message ? <p className="text-sm text-white/65">{message}</p> : null}
     </div>
   );

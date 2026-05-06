@@ -43,6 +43,7 @@ function blankCompetition(userId = "", category?: Category): CompetitionInput {
     rulesVideoType: null,
     startsAt: "",
     endsAt: "",
+    resultAt: "",
     status: "draft",
     isFeatured: false,
     isVisible: false,
@@ -84,13 +85,16 @@ export function AdminCompetitionManagement() {
   function validateBeforeSave(status: CompetitionStatus) {
     if (!editing.title.trim()) return "Title is required.";
     if (!editing.categoryId || !editing.categorySlug) return "Category is required.";
-    if (status === "scheduled" || status === "live") {
-      if (!editing.startsAt || !editing.endsAt) return "Start and end date/time are required for scheduled or live competitions.";
+    if (status !== "draft") {
+      if (!editing.startsAt || !editing.endsAt) return "Start and end date/time are required before publishing.";
+      if (!editing.resultAt) return "Result date/time is required before publishing.";
       const startsAt = new Date(String(editing.startsAt)).getTime();
       const endsAt = new Date(String(editing.endsAt)).getTime();
-      if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt)) return "Start and end date/time must be valid.";
+      const resultAt = new Date(String(editing.resultAt)).getTime();
+      if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || !Number.isFinite(resultAt)) return "Start, end, and result date/time must be valid.";
       if (endsAt <= startsAt) return "End date/time must be after start date/time.";
-      if (!(editing.thumbnailUrl || editing.coverImageUrl)) return "Competition thumbnail is required before publishing.";
+      if (resultAt <= endsAt) return "Result date/time must be after end date/time.";
+      if ((status === "scheduled" || status === "live") && !(editing.thumbnailUrl || editing.coverImageUrl)) return "Competition thumbnail is required before publishing.";
     }
     if (editing.entryFeeType === "paid" && Number(editing.entryFeeAmount) <= 0) return "Paid competition requires an entry fee amount greater than 0.";
     return "";
@@ -212,6 +216,7 @@ export function AdminCompetitionManagement() {
               <option value="draft">draft</option>
               <option value="scheduled">scheduled</option>
               <option value="live">live</option>
+              <option value="result_pending">result_pending</option>
               <option value="ended">ended</option>
             </select>
           </FieldLabel>
@@ -220,6 +225,9 @@ export function AdminCompetitionManagement() {
           </FieldLabel>
           <FieldLabel label="End date/time">
             <input type="datetime-local" value={toLocalInput(editing.endsAt)} onChange={(event) => set("endsAt", event.target.value)} className={inputClass} />
+          </FieldLabel>
+          <FieldLabel label="Result Date / Time">
+            <input type="datetime-local" value={toLocalInput(editing.resultAt)} onChange={(event) => set("resultAt", event.target.value)} className={inputClass} />
           </FieldLabel>
           <FieldLabel label="Description">
             <textarea value={editing.description} onChange={(event) => set("description", event.target.value)} rows={4} className={inputClass} />
@@ -297,7 +305,7 @@ export function AdminCompetitionManagement() {
                   {!competition.isVisible ? <Badge>hidden</Badge> : null}
                 </div>
                 <p className="mt-2 text-sm text-white/55">{competition.description || "No description."}</p>
-                <p className="mt-1 text-xs text-white/40">Start: {toLocalInput(competition.startsAt) || "TBA"} · End: {toLocalInput(competition.endsAt) || "TBA"}</p>
+                <p className="mt-1 text-xs text-white/40">Start: {toLocalInput(competition.startsAt) || "TBA"} · End: {toLocalInput(competition.endsAt) || "TBA"} · Result: {toLocalInput(competition.resultAt) || "TBA"}</p>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" icon={<Pencil className="h-4 w-4" />} onClick={() => editCompetition(competition)}>Edit</Button>

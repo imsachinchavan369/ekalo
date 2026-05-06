@@ -10,6 +10,23 @@ import { Button } from "@/components/ui/Button";
 import { listenToCurrentUser } from "@/lib/auth";
 import { addEntryComment, listenToEntryComments, listenToEntryLike, toggleEntryLike, type EntryComment } from "@/lib/engagement";
 import { followUser, listenToFollowStatus, unfollowUser } from "@/lib/followers";
+import { listenToChallengeBySlugOrId } from "@/lib/challenges";
+import type { Challenge } from "@/types/challenge";
+
+function toMillis(value: unknown) {
+  if (!value) return 0;
+  if (typeof value === "object" && "toMillis" in value && typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value === "string") return new Date(value).getTime();
+  return 0;
+}
+
+function isChallengeLive(challenge: Challenge | null) {
+  if (!challenge || challenge.status === "draft") return false;
+  const now = Date.now();
+  const startsAt = toMillis(challenge.startAt);
+  const endsAt = toMillis(challenge.endAt);
+  return Boolean(startsAt && endsAt && now >= startsAt && now < endsAt);
+}
 
 export function EntryDetailClient({ entryId }: { entryId: string }) {
   const [entry, setEntry] = useState<Entry | null>(null);
@@ -19,10 +36,15 @@ export function EntryDetailClient({ entryId }: { entryId: string }) {
   const [isLiked, setIsLiked] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [message, setMessage] = useState("");
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
 
   useEffect(() => {
     getEntry(entryId).then(setEntry).catch(() => setEntry(null));
   }, [entryId]);
+  useEffect(() => {
+    if (!entry?.challengeId) return;
+    return listenToChallengeBySlugOrId(entry.challengeId, setChallenge);
+  }, [entry?.challengeId]);
   useEffect(() => listenToCurrentUser(setUser), []);
   useEffect(() => listenToEntryComments(entryId, setComments), [entryId]);
   useEffect(() => {
@@ -47,6 +69,7 @@ export function EntryDetailClient({ entryId }: { entryId: string }) {
   const currentEntry = entry;
   const creatorPhoto = currentEntry.userPhoto || null;
   const isOwnEntry = user?.uid === currentEntry.userId;
+  const votingLive = isChallengeLive(challenge);
 
   function requireLogin() {
     window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
@@ -128,7 +151,7 @@ export function EntryDetailClient({ entryId }: { entryId: string }) {
       </div>
       {entry.caption ? <p className="rounded-lg border border-ekalo-line bg-black/40 p-5 text-white/75">{entry.caption}</p> : null}
       <div className="flex flex-wrap items-center gap-3">
-        <VoteButton challengeId={entry.challengeId} entryId={entry.id} entryOwnerId={entry.userId} />
+        <VoteButton challengeId={entry.challengeId} entryId={entry.id} entryOwnerId={entry.userId} disabled={!votingLive} disabledMessage="Voting closed" />
         <Button type="button" variant={isLiked ? "gold" : "outline"} onClick={handleLike} icon={<Heart className="h-4 w-4" />}>
           {entry.likesCount}
         </Button>

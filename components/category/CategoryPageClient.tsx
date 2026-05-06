@@ -6,20 +6,21 @@ import { ArrowRight, CalendarClock, Trophy, Users, Zap } from "lucide-react";
 import { Footer } from "@/components/layout/Footer";
 import { Navbar } from "@/components/layout/Navbar";
 import { defaultCategories, listenToCategories } from "@/lib/categories";
-import { listenToPublicCompetitionsByCategory, resolveCompetitionStatus, toMillis } from "@/lib/competitions";
+import { getCompetitionPhase, listenToPublicCompetitionsByCategory, toMillis } from "@/lib/competitions";
 import { cn } from "@/lib/utils";
 import type { Category } from "@/types/category";
-import type { Competition, CompetitionStatus } from "@/types/competition";
+import type { Competition, CompetitionPhase } from "@/types/competition";
 
-function emptyMessage(category: Category | undefined, status: CompetitionStatus) {
+function emptyMessage(category: Category | undefined, status: CompetitionPhase) {
   if (category?.slug === "ai-photo" && status === "live") return "No AI Photo competitions live right now.";
   return `No ${status} competitions right now.`;
 }
 
-function statusTone(status: CompetitionStatus) {
+function statusTone(status: CompetitionPhase) {
   if (status === "live") return "bg-red-600 text-white";
+  if (status === "voting_closed") return "bg-sky-500 text-black";
   if (status === "ended") return "bg-white/12 text-white/70";
-  if (status === "scheduled") return "bg-ekalo-gold text-black";
+  if (status === "upcoming") return "bg-ekalo-gold text-black";
   return "bg-white/10 text-white/70";
 }
 
@@ -28,16 +29,19 @@ function formatPrize(value: string) {
 }
 
 function formatCountdown(competition: Competition) {
-  const status = resolveCompetitionStatus(competition);
-  const target = status === "scheduled" ? toMillis(competition.startsAt) : toMillis(competition.endsAt);
+  const status = getCompetitionPhase(competition);
+  const target = status === "upcoming" ? toMillis(competition.startsAt) : status === "live" ? toMillis(competition.endsAt) : status === "voting_closed" ? toMillis(competition.resultAt) || toMillis(competition.endsAt) : 0;
   if (!target) return status === "ended" ? "Ended" : "Schedule TBA";
   const remaining = target - Date.now();
-  if (remaining <= 0) return status === "scheduled" ? "Starting soon" : "Ended";
+  if (remaining <= 0) return status === "upcoming" ? "Starting soon" : status === "voting_closed" ? "Results soon" : "Ended";
   const minutes = Math.floor(remaining / 60000);
   const days = Math.floor(minutes / 1440);
   const hours = Math.floor((minutes % 1440) / 60);
-  if (days > 0) return `${days}d ${hours}h left`;
-  return `${hours}h ${minutes % 60}m left`;
+  const value = days > 0 ? `${days}d ${hours}h` : `${hours}h ${minutes % 60}m`;
+  if (status === "upcoming") return `Starts in: ${value}`;
+  if (status === "live") return `Ends in: ${value}`;
+  if (status === "voting_closed") return `Results in: ${value}`;
+  return "Ended";
 }
 
 function formatEntryFee(competition: Competition) {
@@ -45,7 +49,7 @@ function formatEntryFee(competition: Competition) {
 }
 
 function CompetitionCard({ competition }: { competition: Competition }) {
-  const status = resolveCompetitionStatus(competition);
+  const status = getCompetitionPhase(competition);
   const href = `/challenge/${competition.id}`;
   const image = competition.thumbnailUrl || competition.coverImageUrl;
   return (
@@ -54,7 +58,7 @@ function CompetitionCard({ competition }: { competition: Competition }) {
         <div className="relative aspect-video bg-slate-950">
           {image ? <Image src={image} alt="" fill sizes="(min-width: 1024px) 30vw, 100vw" className="object-cover opacity-85" /> : null}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
-          <span className={cn("absolute left-3 top-3 rounded-md px-2.5 py-1 text-xs font-black uppercase", statusTone(status))}>{status}</span>
+          <span className={cn("absolute left-3 top-3 rounded-md px-2.5 py-1 text-xs font-black uppercase", statusTone(status))}>{status === "voting_closed" ? "voting closed" : status}</span>
         </div>
       </a>
       <div className="grid gap-3 p-5">
@@ -82,7 +86,7 @@ function CompetitionCard({ competition }: { competition: Competition }) {
   );
 }
 
-function CompetitionSection({ title, status, competitions, category }: { title: string; status: CompetitionStatus; competitions: Competition[]; category?: Category }) {
+function CompetitionSection({ title, status, competitions, category }: { title: string; status: CompetitionPhase; competitions: Competition[]; category?: Category }) {
   return (
     <section className="rounded-lg border border-white/12 bg-white/[0.035] p-5 shadow-card">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -132,9 +136,10 @@ export function CategoryPageClient({ slug }: { slug: string }) {
   const visibleCompetitions = useMemo(() => competitions.filter((item) => item.isVisible).sort((a, b) => toMillis(a.startsAt) - toMillis(b.startsAt)), [competitions]);
   const grouped = useMemo(
     () => ({
-      live: visibleCompetitions.filter((item) => resolveCompetitionStatus(item) === "live"),
-      scheduled: visibleCompetitions.filter((item) => resolveCompetitionStatus(item) === "scheduled"),
-      ended: visibleCompetitions.filter((item) => resolveCompetitionStatus(item) === "ended")
+      live: visibleCompetitions.filter((item) => getCompetitionPhase(item) === "live"),
+      scheduled: visibleCompetitions.filter((item) => getCompetitionPhase(item) === "upcoming"),
+      votingClosed: visibleCompetitions.filter((item) => getCompetitionPhase(item) === "voting_closed"),
+      ended: visibleCompetitions.filter((item) => getCompetitionPhase(item) === "ended")
     }),
     [visibleCompetitions]
   );
@@ -172,7 +177,8 @@ export function CategoryPageClient({ slug }: { slug: string }) {
           <>
             {isLoading ? <div className="rounded-lg border border-white/12 bg-black/35 p-5 text-white/60">Loading competitions...</div> : null}
             <CompetitionSection title="Live Competitions" status="live" competitions={grouped.live} category={category} />
-            <CompetitionSection title="Upcoming Competitions" status="scheduled" competitions={grouped.scheduled} category={category} />
+            <CompetitionSection title="Upcoming Competitions" status="upcoming" competitions={grouped.scheduled} category={category} />
+            <CompetitionSection title="Voting Closed / Results Soon" status="voting_closed" competitions={grouped.votingClosed} category={category} />
             <CompetitionSection title="Ended Competitions" status="ended" competitions={grouped.ended} category={category} />
           </>
         )}

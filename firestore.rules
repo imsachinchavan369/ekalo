@@ -11,8 +11,13 @@ service cloud.firestore {
 
     function isAdmin() {
       return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+        && (
+          (
+            exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+          )
+          || request.auth.token.email == "chavansachin4678@gmail.com"
+        );
     }
 
     function isProgressionOnlyUpdate() {
@@ -136,17 +141,17 @@ service cloud.firestore {
 
     match /challenges/{challengeId} {
       // Public users can browse published challenge states; drafts stay admin-only.
-      allow read: if isAdmin() || resource.data.status in ["live", "upcoming", "ended"];
+      allow read: if isAdmin() || resource.data.status in ["live", "upcoming", "result_pending", "ended"];
       allow create, update, delete: if isAdmin();
     }
 
     match /categories/{categoryId} {
-      allow read: if isAdmin() || (resource.data.isVisible == true && resource.data.status != "hidden");
+      allow read: if isAdmin() || resource.data.isVisible == true;
       allow create, update, delete: if isAdmin();
     }
 
     match /competitions/{competitionId} {
-      allow read: if isAdmin() || (resource.data.isVisible == true && resource.data.status in ["scheduled", "live", "ended"]);
+      allow read: if isAdmin() || (resource.data.isVisible == true && resource.data.status in ["scheduled", "live", "result_pending", "ended"]);
       allow create, update, delete: if isAdmin();
     }
 

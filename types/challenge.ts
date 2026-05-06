@@ -1,5 +1,5 @@
 export type ChallengeType = "image" | "video";
-export type ChallengeStatus = "draft" | "upcoming" | "live" | "ended";
+export type ChallengeStatus = "draft" | "upcoming" | "live" | "result_pending" | "ended";
 export type EntryMode = "free" | "paid";
 export type CoverMediaType = "image" | "video";
 
@@ -32,6 +32,7 @@ export type Challenge = {
   allowMultipleEntries: boolean;
   startAt: unknown;
   endAt: unknown;
+  resultAt?: unknown;
   resultAnnounceAt: unknown | null;
   scoring: {
     votingWeight: number;

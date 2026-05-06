@@ -106,6 +106,7 @@ function normalize(id: string, data: Record<string, unknown>): Challenge {
     rulesVideoType: data.rulesVideoType === "upload" || data.rulesVideoType === "url" ? data.rulesVideoType : null,
     startAt: data.startAt ?? data.startsAt ?? "",
     endAt: data.endAt ?? data.endsAt ?? "",
+    resultAt: data.resultAt ?? data.resultAnnounceAt ?? data.endAt ?? data.endsAt ?? "",
     id,
     stats: {
       entriesCount: 0,
@@ -161,20 +162,19 @@ export function listenToChallenges(callback: (challenges: Challenge[]) => void) 
 }
 
 export async function getPublicChallenges() {
-  const snapshot = await getDocs(query(collection(requireDb(), "competitions"), where("isVisible", "==", true), where("status", "in", ["scheduled", "live", "ended"])));
+  const snapshot = await getDocs(query(collection(requireDb(), "competitions"), where("isVisible", "==", true), where("status", "in", ["scheduled", "live", "result_pending", "ended"])));
   return snapshot.docs.map((item) => normalize(item.id, item.data()));
 }
 
 export function listenToPublicChallenges(callback: (challenges: Challenge[]) => void) {
-  return onSnapshot(query(collection(requireDb(), "competitions"), where("isVisible", "==", true), where("status", "in", ["scheduled", "live", "ended"])), (snapshot) => {
+  return onSnapshot(query(collection(requireDb(), "competitions"), where("isVisible", "==", true), where("status", "in", ["scheduled", "live", "result_pending", "ended"])), (snapshot) => {
     callback(snapshot.docs.map((item) => normalize(item.id, item.data())));
   });
 }
 
 export function listenToChallengeBySlugOrId(slugOrId: string, callback: (challenge: Challenge | null) => void) {
-  return onSnapshot(collection(requireDb(), "challenges"), (snapshot) => {
-    const match = snapshot.docs.map((item) => normalize(item.id, item.data())).find((item) => item.id === slugOrId || item.slug === slugOrId);
-    callback(match ?? null);
+  return onSnapshot(doc(requireDb(), "challenges", slugOrId), (snapshot) => {
+    callback(snapshot.exists() ? normalize(snapshot.id, snapshot.data()) : null);
   });
 }
 

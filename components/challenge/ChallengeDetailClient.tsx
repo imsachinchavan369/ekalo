@@ -8,6 +8,40 @@ import { listenToChallengeBySlugOrId } from "@/lib/challenges";
 import type { Challenge } from "@/types/challenge";
 import { EntryUploadForm } from "@/components/challenge/EntryUploadForm";
 
+function toMillis(value: unknown) {
+  if (!value) return 0;
+  if (typeof value === "object" && "toMillis" in value && typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value === "string") return new Date(value).getTime();
+  return 0;
+}
+
+function getChallengePhase(challenge: Challenge) {
+  if (challenge.status === "draft") return "draft";
+  const now = Date.now();
+  const startsAt = toMillis(challenge.startAt);
+  const endsAt = toMillis(challenge.endAt);
+  const resultAt = toMillis(challenge.resultAt) || endsAt;
+  if (startsAt && now < startsAt) return "upcoming";
+  if (startsAt && endsAt && now >= startsAt && now < endsAt) return "live";
+  if (endsAt && resultAt && now >= endsAt && now < resultAt) return "voting_closed";
+  if (resultAt && now >= resultAt) return "ended";
+  if (challenge.status === "result_pending") return "voting_closed";
+  if (challenge.status === "upcoming") return "upcoming";
+  return challenge.status === "live" ? "live" : "ended";
+}
+
+function formatCountdown(label: string, target: unknown) {
+  const targetMs = toMillis(target);
+  if (!targetMs) return "";
+  const remaining = targetMs - Date.now();
+  if (remaining <= 0) return "";
+  const minutes = Math.floor(remaining / 60000);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const value = days > 0 ? `${days}d ${hours}h` : `${hours}h ${minutes % 60}m`;
+  return `${label}: ${value}`;
+}
+
 export function ChallengeDetailClient({ slugOrId }: { slugOrId: string }) {
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -18,9 +52,11 @@ export function ChallengeDetailClient({ slugOrId }: { slugOrId: string }) {
     return <div className="rounded-lg border border-ekalo-line bg-black/40 p-6 text-white/70">Loading challenge...</div>;
   }
 
-  const isLive = challenge.status === "live";
-  const isUpcoming = challenge.status === "upcoming";
-  const isEnded = challenge.status === "ended";
+  const phase = getChallengePhase(challenge);
+  const isLive = phase === "live";
+  const isUpcoming = phase === "upcoming";
+  const isVotingClosed = phase === "voting_closed";
+  const isEnded = phase === "ended";
   const cover = challenge.thumbnailUrl || challenge.coverImageUrl;
   const entryFeeType = challenge.entryFeeType || challenge.entryMode;
   const entryFeeAmount = Number(challenge.entryFeeAmount ?? challenge.paidEntryAmount ?? 0);
@@ -54,17 +90,21 @@ export function ChallengeDetailClient({ slugOrId }: { slugOrId: string }) {
           <p className="mt-3 text-white/70">{challenge.description}</p>
           <div className="mt-5 grid gap-3 text-white sm:grid-cols-2">
             <span className="rounded-lg border border-white/10 bg-black/35 p-3">Theme: {challenge.theme}</span>
-            <span className="rounded-lg border border-white/10 bg-black/35 p-3">Status: {challenge.status}</span>
+            <span className="rounded-lg border border-white/10 bg-black/35 p-3">Status: {phase === "voting_closed" ? "Voting closed" : phase}</span>
             <span className="rounded-lg border border-white/10 bg-black/35 p-3">Prize: {challenge.prizeCurrency} {challenge.prizePoolAmount}</span>
             <span className="rounded-lg border border-white/10 bg-black/35 p-3">Entry: {entryFeeLabel}</span>
           </div>
+          <p className="mt-4 rounded-lg border border-white/10 bg-black/35 p-3 text-sm font-semibold text-ekalo-gold">
+            {isUpcoming ? formatCountdown("Starts in", challenge.startAt) : isLive ? formatCountdown("Ends in", challenge.endAt) : isVotingClosed ? formatCountdown("Results in", challenge.resultAt || challenge.endAt) || "Voting closed. Results coming soon." : "Ended"}
+          </p>
           <div className="mt-5 flex flex-wrap gap-3">
             {isLive ? (
               <Button type="button" onClick={handleJoin} icon={<Zap className="h-4 w-4" aria-hidden="true" />}>
                 {entryFeeType === "paid" ? `Pay ₹${entryFeeAmount} & Join` : "Join Free"}
               </Button>
             ) : null}
-            {isUpcoming ? <Button type="button" variant="purpleGhost" onClick={() => alert("This challenge is coming soon.")} icon={<Bell className="h-4 w-4" aria-hidden="true" />}>Notify Me</Button> : null}
+            {isUpcoming ? <Button type="button" variant="purpleGhost" disabled icon={<Bell className="h-4 w-4" aria-hidden="true" />}>Join opens soon</Button> : null}
+            {isVotingClosed ? <Button type="button" variant="outline" disabled>Voting closed</Button> : null}
             {isEnded ? <Button type="button" variant="outline">View Winners</Button> : null}
           </div>
         </div>
@@ -91,6 +131,7 @@ export function ChallengeDetailClient({ slugOrId }: { slugOrId: string }) {
           </div>
         </div>
       </div>
+      {isVotingClosed ? <div className="rounded-lg border border-ekalo-line bg-black/40 p-5 text-white/70">Voting closed. Results coming soon.</div> : null}
       {isEnded ? <div className="rounded-lg border border-ekalo-line bg-black/40 p-5 text-white/70"><Trophy className="mb-2 h-6 w-6 text-ekalo-gold" /> Results and winners will appear here.</div> : null}
       {showForm ? <EntryUploadForm challenge={challenge} /> : null}
     </div>

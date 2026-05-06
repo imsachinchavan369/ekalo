@@ -1,4 +1,5 @@
-export type CompetitionStatus = "draft" | "scheduled" | "live" | "ended";
+export type CompetitionStatus = "draft" | "scheduled" | "live" | "result_pending" | "ended";
+export type CompetitionPhase = "draft" | "upcoming" | "live" | "voting_closed" | "ended";
 export type CompetitionEntryFee = "free" | "paid";
 export type CompetitionMediaType = "video" | "photo" | "audio" | "image" | "mixed";
 
@@ -23,6 +24,7 @@ export type Competition = {
   rulesVideoType: "upload" | "url" | null;
   startsAt: unknown;
   endsAt: unknown;
+  resultAt: unknown;
   status: CompetitionStatus;
   isFeatured: boolean;
   isVisible: boolean;
