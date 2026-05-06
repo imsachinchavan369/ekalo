@@ -34,9 +34,11 @@ export function Navbar() {
   const { content } = useSiteContent();
   const { user, isAdmin } = useAdmin();
   const pathname = usePathname();
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>(defaultCategories);
+  const isProfilePage = pathname === "/profile";
 
   useEffect(() => {
     try {
@@ -50,7 +52,8 @@ export function Navbar() {
   async function handleLogout() {
     try {
       await logout();
-      setIsDrawerOpen(false);
+      setIsMobileDrawerOpen(false);
+      setIsProfileDrawerOpen(false);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Logout failed.");
     }
@@ -104,12 +107,12 @@ export function Navbar() {
               <Mic2 className="h-4 w-4" aria-hidden="true" />
               Rap
             </a>
-            <button type="button" onClick={() => setIsCategoryOpen((value) => !value)} className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black text-white/70 transition hover:bg-white/8 hover:text-white" aria-expanded={isCategoryOpen}>
+            <button type="button" onClick={() => setIsCategoryMenuOpen((value) => !value)} className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black text-white/70 transition hover:bg-white/8 hover:text-white" aria-expanded={isCategoryMenuOpen}>
               More / Categories
               <ChevronDown className="h-4 w-4" aria-hidden="true" />
             </button>
-            {isCategoryOpen ? (
-              <CategoryMenu categories={categories} pathname={pathname} onClose={() => setIsCategoryOpen(false)} />
+            {isCategoryMenuOpen ? (
+              <CategoryMenu categories={categories} pathname={pathname} onClose={() => setIsCategoryMenuOpen(false)} />
             ) : null}
           </div>
         </div>
@@ -119,17 +122,23 @@ export function Navbar() {
           <button
             type="button"
             aria-label="Open menu"
-            aria-expanded={isDrawerOpen}
-            onClick={() => setIsDrawerOpen(true)}
+            aria-expanded={isProfilePage ? isProfileDrawerOpen : isMobileDrawerOpen}
+            onClick={() => {
+              if (isProfilePage) {
+                setIsProfileDrawerOpen(true);
+                return;
+              }
+              setIsMobileDrawerOpen(true);
+            }}
             className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white transition hover:border-sky-300/50 hover:bg-sky-400/10 lg:hidden"
           >
             <Menu className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
       </nav>
-      {isDrawerOpen ? (
+      {isMobileDrawerOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" aria-label="Close menu" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsDrawerOpen(false)} />
+          <button type="button" aria-label="Close menu" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsMobileDrawerOpen(false)} />
           <aside className="absolute right-0 top-0 flex h-dvh w-[min(22rem,88vw)] flex-col border-l border-sky-300/15 bg-[#030812]/95 p-5 shadow-[0_0_70px_rgba(14,165,233,0.22)]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -141,7 +150,7 @@ export function Navbar() {
                   <p className="text-xs text-sky-200">Create. Compete. Conquer.</p>
                 </div>
               </div>
-              <button type="button" aria-label="Close menu" onClick={() => setIsDrawerOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white">
+              <button type="button" aria-label="Close menu" onClick={() => setIsMobileDrawerOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white">
                 <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
@@ -154,7 +163,7 @@ export function Navbar() {
                   <a
                     key={item.slug}
                     href={href}
-                    onClick={() => setIsDrawerOpen(false)}
+                    onClick={() => setIsMobileDrawerOpen(false)}
                     className={cn(
                       "flex items-center gap-3 rounded-lg border px-4 py-3 font-semibold transition",
                       isActive
@@ -175,7 +184,7 @@ export function Navbar() {
                   <a
                     key={item.href}
                     href={item.href}
-                    onClick={() => setIsDrawerOpen(false)}
+                    onClick={() => setIsMobileDrawerOpen(false)}
                     className={cn(
                       "flex items-center gap-3 rounded-lg border px-4 py-3 font-semibold transition",
                       isActive
@@ -191,7 +200,7 @@ export function Navbar() {
               {isAdmin ? (
                 <a
                   href="/admin"
-                  onClick={() => setIsDrawerOpen(false)}
+                  onClick={() => setIsMobileDrawerOpen(false)}
                   className="flex items-center gap-3 rounded-lg border border-ekalo-gold/35 bg-ekalo-gold/10 px-4 py-3 font-semibold text-ekalo-gold transition hover:bg-ekalo-gold hover:text-black"
                 >
                   <LayoutDashboard className="h-5 w-5" aria-hidden="true" />
@@ -214,6 +223,15 @@ export function Navbar() {
             </div>
           </aside>
         </div>
+      ) : null}
+      {isProfileDrawerOpen ? (
+        <ProfileNavigationDrawer
+          pathname={pathname}
+          user={user}
+          isAdmin={isAdmin}
+          onClose={() => setIsProfileDrawerOpen(false)}
+          onLogout={handleLogout}
+        />
       ) : null}
     </header>
   );
@@ -242,6 +260,98 @@ function CategoryMenu({ categories, pathname, onClose }: { categories: Category[
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ProfileNavigationDrawer({
+  pathname,
+  user,
+  isAdmin,
+  onClose,
+  onLogout
+}: {
+  pathname: string;
+  user: { displayName?: string | null; email?: string | null; photoURL?: string | null } | null;
+  isAdmin: boolean;
+  onClose: () => void;
+  onLogout: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 lg:hidden">
+      <button type="button" aria-label="Close profile menu" className="absolute inset-0 bg-black/72 backdrop-blur-sm" onClick={onClose} />
+      <aside className="absolute right-0 top-0 flex h-dvh w-[min(22rem,88vw)] flex-col border-l border-sky-300/15 bg-[#030812]/96 p-5 shadow-[0_0_70px_rgba(14,165,233,0.24)]">
+        <div className="flex items-center justify-between gap-3">
+          <a href="/" onClick={onClose} className="flex items-center gap-3" aria-label="EKALO home">
+            <span className="relative h-10 w-10 overflow-hidden rounded-lg border border-sky-300/20 bg-black">
+              <Image src="/images/brand/ekalo-logo.png" alt="" fill sizes="40px" className="object-cover" />
+            </span>
+            <span>
+              <span className="block font-black tracking-[0.18em] text-white">EKALO</span>
+              <span className="text-xs text-sky-200">One Gem. One Winner.</span>
+            </span>
+          </a>
+          <button type="button" aria-label="Close profile menu" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white">
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="mt-6 flex items-center gap-3 rounded-lg border border-sky-300/15 bg-sky-400/10 p-3">
+          <span className="relative h-12 w-12 overflow-hidden rounded-full border border-sky-300/35 bg-slate-950">
+            {user?.photoURL ? <Image src={user.photoURL} alt="" fill sizes="48px" className="object-cover" /> : null}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate font-black text-white">{user?.displayName || "EKALO Creator"}</span>
+            <span className="block truncate text-xs text-white/55">{user?.email || "Creator account"}</span>
+          </span>
+        </div>
+
+        <nav className="mt-6 grid gap-2">
+          {accountLinks.map((item) => {
+            const Icon = item.icon;
+            const isActive = item.href !== "/" && pathname === item.href;
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg border px-4 py-3 font-semibold transition",
+                  isActive
+                    ? "border-sky-300/55 bg-sky-400/15 text-sky-100 shadow-[0_0_32px_rgba(14,165,233,0.2)]"
+                    : "border-white/10 bg-white/[0.04] text-white/78 hover:border-sky-300/35 hover:bg-sky-400/10 hover:text-white"
+                )}
+              >
+                <Icon className="h-5 w-5 text-sky-300" aria-hidden="true" />
+                {item.label}
+              </a>
+            );
+          })}
+          {isAdmin ? (
+            <a
+              href="/admin"
+              onClick={onClose}
+              className="flex items-center gap-3 rounded-lg border border-ekalo-gold/35 bg-ekalo-gold/10 px-4 py-3 font-semibold text-ekalo-gold transition hover:bg-ekalo-gold hover:text-black"
+            >
+              <LayoutDashboard className="h-5 w-5" aria-hidden="true" />
+              Admin Dashboard
+            </a>
+          ) : null}
+        </nav>
+
+        <div className="mt-auto pt-5">
+          {user ? (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex w-full items-center gap-3 rounded-lg border border-red-400/25 bg-red-500/10 px-4 py-3 font-semibold text-red-200 transition hover:border-red-300/60 hover:bg-red-500/20"
+            >
+              <LogOut className="h-5 w-5" aria-hidden="true" />
+              Logout
+            </button>
+          ) : null}
+        </div>
+      </aside>
     </div>
   );
 }
