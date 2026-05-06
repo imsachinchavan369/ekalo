@@ -49,6 +49,15 @@ export function Navbar() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isProfileDrawerOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isProfileDrawerOpen]);
+
   async function handleLogout() {
     try {
       await logout();
@@ -278,9 +287,9 @@ function ProfileNavigationDrawer({
   onLogout: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 lg:hidden">
-      <button type="button" aria-label="Close profile menu" className="absolute inset-0 bg-black/72 backdrop-blur-sm" onClick={onClose} />
-      <aside className="absolute right-0 top-0 flex h-dvh w-[min(22rem,88vw)] flex-col border-l border-sky-300/15 bg-[#030812]/96 p-5 shadow-[0_0_70px_rgba(14,165,233,0.24)]">
+    <div className="fixed inset-0 z-[90] lg:hidden" role="dialog" aria-modal="true" aria-label="Profile navigation">
+      <button type="button" aria-label="Close profile menu" className="fixed inset-0 z-[90] bg-black/85 backdrop-blur-sm" onClick={onClose} />
+      <aside className="fixed right-0 top-0 z-[100] flex h-dvh w-[min(22rem,88vw)] translate-x-0 flex-col border-l border-sky-300/20 bg-[#050816] p-5 shadow-[-18px_0_80px_rgba(0,0,0,0.72),0_0_42px_rgba(14,165,233,0.18)] animate-in slide-in-from-right duration-200">
         <div className="flex items-center justify-between gap-3">
           <a href="/" onClick={onClose} className="flex items-center gap-3" aria-label="EKALO home">
             <span className="relative h-10 w-10 overflow-hidden rounded-lg border border-sky-300/20 bg-black">
@@ -296,7 +305,7 @@ function ProfileNavigationDrawer({
           </button>
         </div>
 
-        <div className="mt-6 flex items-center gap-3 rounded-lg border border-sky-300/15 bg-sky-400/10 p-3">
+        <div className="mt-6 flex items-center gap-3 rounded-lg border border-sky-300/15 bg-[#081326] p-3">
           <span className="relative h-12 w-12 overflow-hidden rounded-full border border-sky-300/35 bg-slate-950">
             {user?.photoURL ? <Image src={user.photoURL} alt="" fill sizes="48px" className="object-cover" /> : null}
           </span>
@@ -319,7 +328,7 @@ function ProfileNavigationDrawer({
                   "flex items-center gap-3 rounded-lg border px-4 py-3 font-semibold transition",
                   isActive
                     ? "border-sky-300/55 bg-sky-400/15 text-sky-100 shadow-[0_0_32px_rgba(14,165,233,0.2)]"
-                    : "border-white/10 bg-white/[0.04] text-white/78 hover:border-sky-300/35 hover:bg-sky-400/10 hover:text-white"
+                    : "border-white/10 bg-[#090f1d] text-white/78 hover:border-sky-300/35 hover:bg-[#0d1c34] hover:text-white"
                 )}
               >
                 <Icon className="h-5 w-5 text-sky-300" aria-hidden="true" />
