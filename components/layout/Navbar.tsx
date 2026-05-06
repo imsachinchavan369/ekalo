@@ -39,6 +39,7 @@ export function Navbar() {
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>(defaultCategories);
   const isProfilePage = pathname === "/profile";
+  const hasOpenOverlay = isProfileDrawerOpen || isMobileDrawerOpen || isCategoryMenuOpen;
 
   useEffect(() => {
     try {
@@ -50,13 +51,37 @@ export function Navbar() {
   }, []);
 
   useEffect(() => {
-    if (!isProfileDrawerOpen) return;
+    if (!hasOpenOverlay) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isProfileDrawerOpen]);
+  }, [hasOpenOverlay]);
+
+  useEffect(() => {
+    if (!isProfilePage) return;
+    setIsCategoryMenuOpen(false);
+    setIsMobileDrawerOpen(false);
+  }, [isProfilePage]);
+
+  function openCategoryMenu() {
+    setIsProfileDrawerOpen(false);
+    setIsMobileDrawerOpen(false);
+    setIsCategoryMenuOpen((value) => !value);
+  }
+
+  function openProfileDrawer() {
+    setIsCategoryMenuOpen(false);
+    setIsMobileDrawerOpen(false);
+    setIsProfileDrawerOpen(true);
+  }
+
+  function openMobileDrawer() {
+    setIsCategoryMenuOpen(false);
+    setIsProfileDrawerOpen(false);
+    setIsMobileDrawerOpen(true);
+  }
 
   async function handleLogout() {
     try {
@@ -111,33 +136,41 @@ export function Navbar() {
               );
             })}
           </div>
-          <div className="relative flex rounded-lg border border-white/10 bg-white/[0.04] p-1">
+          {!isProfilePage ? <div className="relative flex rounded-lg border border-white/10 bg-white/[0.04] p-1">
             <a href="/" className={cn("inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black transition", pathname === "/" ? "bg-ekalo-gold text-black" : "text-white/70 hover:bg-white/8 hover:text-white")}>
               <Mic2 className="h-4 w-4" aria-hidden="true" />
               Rap
             </a>
-            <button type="button" onClick={() => setIsCategoryMenuOpen((value) => !value)} className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black text-white/70 transition hover:bg-white/8 hover:text-white" aria-expanded={isCategoryMenuOpen}>
+            <button type="button" onClick={openCategoryMenu} className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black text-white/70 transition hover:bg-white/8 hover:text-white" aria-expanded={isCategoryMenuOpen}>
               More / Categories
               <ChevronDown className="h-4 w-4" aria-hidden="true" />
             </button>
-            {isCategoryMenuOpen ? (
-              <CategoryMenu categories={categories} pathname={pathname} onClose={() => setIsCategoryMenuOpen(false)} />
-            ) : null}
-          </div>
+          </div> : null}
         </div>
 
         <div className="flex items-center gap-3">
           <AuthActions />
+          {!isProfilePage ? (
+            <button
+              type="button"
+              onClick={openCategoryMenu}
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-ekalo-gold/25 bg-ekalo-gold/10 px-3 text-xs font-black text-ekalo-gold transition hover:border-ekalo-gold lg:hidden"
+              aria-expanded={isCategoryMenuOpen}
+            >
+              Categories
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : null}
           <button
             type="button"
             aria-label="Open menu"
             aria-expanded={isProfilePage ? isProfileDrawerOpen : isMobileDrawerOpen}
             onClick={() => {
               if (isProfilePage) {
-                setIsProfileDrawerOpen(true);
+                openProfileDrawer();
                 return;
               }
-              setIsMobileDrawerOpen(true);
+              openMobileDrawer();
             }}
             className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white transition hover:border-sky-300/50 hover:bg-sky-400/10 lg:hidden"
           >
@@ -145,10 +178,13 @@ export function Navbar() {
           </button>
         </div>
       </nav>
+      {isCategoryMenuOpen ? (
+        <CategoryMenu categories={categories} pathname={pathname} onClose={() => setIsCategoryMenuOpen(false)} />
+      ) : null}
       {isMobileDrawerOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" aria-label="Close menu" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setIsMobileDrawerOpen(false)} />
-          <aside className="absolute right-0 top-0 flex h-dvh w-[min(22rem,88vw)] flex-col border-l border-sky-300/15 bg-[#030812]/95 p-5 shadow-[0_0_70px_rgba(14,165,233,0.22)]">
+        <div className="fixed inset-0 z-[90] lg:hidden" role="dialog" aria-modal="true" aria-label="Mobile navigation">
+          <button type="button" aria-label="Close menu" className="fixed inset-0 z-[90] bg-black/85 backdrop-blur-sm" onClick={() => setIsMobileDrawerOpen(false)} />
+          <aside className="fixed right-0 top-0 z-[100] flex h-dvh w-[min(22rem,88vw)] flex-col border-l border-sky-300/20 bg-[#050816] p-5 shadow-[-18px_0_80px_rgba(0,0,0,0.72),0_0_42px_rgba(14,165,233,0.18)] animate-in slide-in-from-right duration-200">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="relative h-10 w-10 overflow-hidden rounded-lg border border-sky-300/20 bg-black">
@@ -165,27 +201,6 @@ export function Navbar() {
             </div>
 
             <nav className="mt-7 grid gap-2">
-              {categories.map((item) => {
-                const href = categoryHref(item);
-                const isActive = href === "/" ? pathname === "/" : pathname === href;
-                return (
-                  <a
-                    key={item.slug}
-                    href={href}
-                    onClick={() => setIsMobileDrawerOpen(false)}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg border px-4 py-3 font-semibold transition",
-                      isActive
-                        ? "border-ekalo-gold/60 bg-ekalo-gold text-black"
-                        : "border-white/10 bg-white/[0.04] text-white/78 hover:border-ekalo-gold/45 hover:bg-ekalo-gold/10 hover:text-white"
-                    )}
-                  >
-                    {item.slug === "rap" ? <Mic2 className="h-5 w-5" aria-hidden="true" /> : <BookOpen className="h-5 w-5" aria-hidden="true" />}
-                    <span className="min-w-0 flex-1">{item.name}</span>
-                    {item.status === "upcoming" ? <span className="rounded bg-white/10 px-2 py-0.5 text-xs">Upcoming</span> : null}
-                  </a>
-                );
-              })}
               {accountLinks.map((item) => {
                 const Icon = item.icon;
                 const isActive = item.href !== "/" && pathname === item.href;
@@ -252,22 +267,34 @@ function categoryHref(category: Category) {
 
 function CategoryMenu({ categories, pathname, onClose }: { categories: Category[]; pathname: string; onClose: () => void }) {
   return (
-    <div className="absolute right-0 top-12 z-50 w-[min(34rem,calc(100vw-2rem))] rounded-lg border border-ekalo-gold/25 bg-[#05070d]/95 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {categories.map((category) => {
-          const href = categoryHref(category);
-          const isActive = href === "/" ? pathname === "/" : pathname === href;
-          return (
-            <a key={category.slug} href={href} onClick={onClose} className={cn("flex min-h-14 items-center gap-3 rounded-lg border px-3 py-2 transition", isActive ? "border-ekalo-gold bg-ekalo-gold text-black" : "border-white/10 bg-white/[0.04] text-white hover:border-ekalo-gold/50 hover:bg-ekalo-gold/10")}>
-              {category.slug === "rap" ? <Mic2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <Sparkles className="h-5 w-5 shrink-0" aria-hidden="true" />}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-black">{category.name}</span>
-                {category.description ? <span className={cn("mt-0.5 block truncate text-xs", isActive ? "text-black/70" : "text-white/45")}>{category.description}</span> : null}
-              </span>
-              {category.status === "upcoming" ? <span className={cn("rounded px-2 py-1 text-[10px] font-black uppercase", isActive ? "bg-black/10 text-black" : "bg-white/10 text-white/72")}>Upcoming</span> : null}
-            </a>
-          );
-        })}
+    <div className="fixed inset-0 z-[90]" role="dialog" aria-modal="true" aria-label="Category navigation">
+      <button type="button" aria-label="Close category menu" className="fixed inset-0 z-[90] bg-black/85 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed right-4 top-20 z-[100] max-h-[calc(100dvh-6rem)] w-[min(34rem,calc(100vw-2rem))] overflow-y-auto rounded-lg border border-ekalo-gold/25 bg-[#050816] p-3 shadow-[-18px_20px_80px_rgba(0,0,0,0.72),0_0_42px_rgba(250,204,21,0.12)] sm:right-8 lg:right-[max(2.5rem,calc((100vw-1320px)/2+2.5rem))]">
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+          <div>
+            <p className="text-sm font-black uppercase text-ekalo-gold">More / Categories</p>
+            <p className="mt-1 text-xs text-white/50">Choose a competition category</p>
+          </div>
+          <button type="button" aria-label="Close category menu" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-[#090f1d] text-white">
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {categories.map((category) => {
+            const href = categoryHref(category);
+            const isActive = href === "/" ? pathname === "/" : pathname === href;
+            return (
+              <a key={category.slug} href={href} onClick={onClose} className={cn("flex min-h-14 items-center gap-3 rounded-lg border px-3 py-2 transition", isActive ? "border-ekalo-gold bg-ekalo-gold text-black" : "border-white/10 bg-[#090f1d] text-white hover:border-ekalo-gold/50 hover:bg-[#151821]")}>
+                {category.slug === "rap" ? <Mic2 className="h-5 w-5 shrink-0" aria-hidden="true" /> : <Sparkles className="h-5 w-5 shrink-0" aria-hidden="true" />}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-black">{category.name}</span>
+                  {category.description ? <span className={cn("mt-0.5 block truncate text-xs", isActive ? "text-black/70" : "text-white/45")}>{category.description}</span> : null}
+                </span>
+                {category.status === "upcoming" ? <span className={cn("rounded px-2 py-1 text-[10px] font-black uppercase", isActive ? "bg-black/10 text-black" : "bg-white/10 text-white/72")}>Upcoming</span> : null}
+              </a>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
