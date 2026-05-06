@@ -1,265 +1,73 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
     function signedIn() {
       return request.auth != null;
     }
 
-    function isSignedIn() {
-      return signedIn();
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
     }
 
     function isAdmin() {
       return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && (
-          (
-            exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
-          )
-          || request.auth.token.email == "chavansachin4678@gmail.com"
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true
         );
     }
 
-    function isProgressionOnlyUpdate() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        "coins",
-        "level",
-        "currentLevel",
-        "totalVotesReceived",
-        "validVotesReceived",
-        "totalVotes",
-        "currentLevelProgress",
-        "currentLevelVotes",
-        "nextLevelTarget",
-        "totalCoins",
-        "currentTier",
-        "unlockedTiers",
-        "updatedAt"
-      ]);
-    }
-
-    function userDocPath(userId) {
-      return /databases/$(database)/documents/users/$(userId);
-    }
-
-    function followerDocPath(userId) {
-      return /databases/$(database)/documents/users/$(userId)/followers/$(request.auth.uid);
-    }
-
-    function existingFollowersCountForResource() {
-      return "followersCount" in resource.data ? resource.data.followersCount : 0;
-    }
-
-    function existingFollowersCountForUser(userId) {
-      return "followersCount" in get(userDocPath(userId)).data
-        ? get(userDocPath(userId)).data.followersCount
-        : 0;
-    }
-
-    function nextFollowersCountForUser(userId) {
-      return "followersCount" in getAfter(userDocPath(userId)).data
-        ? getAfter(userDocPath(userId)).data.followersCount
-        : 0;
-    }
-
-    function isFollowersCountOnlyUpdate(userId) {
-      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
-      let followerPath = followerDocPath(userId);
-      return signedIn()
-        && request.auth.uid != userId
-        && changedKeys.hasOnly(["followersCount", "updatedAt"])
-        && request.resource.data.followersCount is number
-        && (
-          (
-            request.resource.data.followersCount == existingFollowersCountForResource() + 1
-            && !exists(followerPath)
-            && existsAfter(followerPath)
-          )
-          || (
-            request.resource.data.followersCount == existingFollowersCountForResource() - 1
-            && request.resource.data.followersCount >= 0
-            && exists(followerPath)
-            && !existsAfter(followerPath)
-          )
-        );
-    }
-
-    function isSelfProfileUpdate(userId) {
-      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
-      return signedIn()
-        && request.auth.uid == userId
-        && request.resource.data.role == resource.data.role
-        && (
-          !changedKeys.hasAny(["followersCount"])
-          || (!("followersCount" in resource.data) && request.resource.data.followersCount == 0)
-        );
-    }
-
-    function isFollowerCreateWithCountIncrement(userId, followerId) {
-      return signedIn()
-        && request.auth.uid == followerId
-        && request.auth.uid != userId
-        && exists(userDocPath(userId))
-        && request.resource.data.keys().hasOnly(["createdAt"])
-        && request.resource.data.createdAt == request.time
-        && nextFollowersCountForUser(userId) == existingFollowersCountForUser(userId) + 1;
-    }
-
-    function isFollowerDeleteWithCountDecrement(userId, followerId) {
-      return signedIn()
-        && request.auth.uid == followerId
-        && request.auth.uid != userId
-        && exists(userDocPath(userId))
-        && nextFollowersCountForUser(userId) == existingFollowersCountForUser(userId) - 1
-        && nextFollowersCountForUser(userId) >= 0;
-    }
-
-    match /siteContent/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
+    // Users profile
     match /users/{userId} {
-      allow read: if signedIn();
-      allow create: if signedIn()
-        && request.auth.uid == userId
-        && request.resource.data.role == "user"
-        && request.resource.data.followersCount == 0;
-      allow update: if isAdmin()
-        || isSelfProfileUpdate(userId)
-        || isFollowersCountOnlyUpdate(userId)
-        || (signedIn() && isProgressionOnlyUpdate());
+      allow read: if true;
+      allow create, update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
+    }
 
-      match /followers/{followerId} {
-        allow read: if signedIn() && (request.auth.uid == followerId || request.auth.uid == userId || isAdmin());
-        allow create: if isFollowerCreateWithCountIncrement(userId, followerId);
-        allow update: if false;
-        allow delete: if isFollowerDeleteWithCountDecrement(userId, followerId);
-      }
+    // Competitions / challenges
+    match /competitions/{competitionId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     match /challenges/{challengeId} {
-      // Public users can browse published challenge states; drafts stay admin-only.
-      allow read: if isAdmin() || resource.data.status in ["live", "upcoming", "result_pending", "ended"];
+      allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
-    match /categories/{categoryId} {
-      allow read: if isAdmin() || resource.data.isVisible == true;
-      allow create, update, delete: if isAdmin();
-    }
-
-    match /competitions/{competitionId} {
-      allow read: if isAdmin() || (resource.data.isVisible == true && resource.data.status in ["scheduled", "live", "result_pending", "ended"]);
-      allow create, update, delete: if isAdmin();
-    }
-
-    match /entries/{entryId} {
-      // Entries are public for challenge pages, but users may only create their own entries.
-      // Score counters and moderation status are server/admin controlled after creation.
+    // Submissions
+    match /submissions/{submissionId} {
       allow read: if true;
       allow create: if signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.votesCount == 0
-        && request.resource.data.validVotesCount == 0
-        && request.resource.data.likesCount == 0
-        && request.resource.data.commentsCount == 0
-        && request.resource.data.viewsCount == 0
-        && request.resource.data.votingScore == 0
-        && request.resource.data.engagementScore == 0
-        && request.resource.data.qualityScore == 0
-        && request.resource.data.totalScore == 0
-        && request.resource.data.status in ["pending", "approved"];
-      allow update: if isAdmin()
-        || (
-          signedIn()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["votesCount", "validVotesCount", "updatedAt"])
-          && request.resource.data.votesCount == resource.data.votesCount + 1
-          && request.resource.data.validVotesCount == resource.data.validVotesCount + 1
-        );
-      allow delete: if isAdmin();
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin()
+        || resource.data.userId == request.auth.uid;
     }
 
+    // Votes
     match /votes/{voteId} {
       allow read: if isAdmin();
-      allow create: if signedIn()
-        && request.resource.data.voterId == request.auth.uid
-        && request.resource.data.isValid is bool
-        && request.resource.data.isSuspicious is bool;
+      allow create: if signedIn();
       allow update, delete: if false;
     }
 
-    match /levelEvents/{eventId} {
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if signedIn()
-        && request.resource.data.userId is string
-        && request.resource.data.level is number
-        && request.resource.data.rewardCoins is number
-        && (request.resource.data.tier == null || request.resource.data.tier in ["Bronze", "Silver", "Gold", "Platinum", "Diamond"]);
-      allow update, delete: if isAdmin();
-    }
-
-    match /payments/{paymentId} {
-      // Paid entry model is a placeholder for future Razorpay/manual verification.
-      // Users can read their own payment rows; only admin can verify or mutate payments.
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    // Categories
+    match /categories/{categoryId} {
+      allow read: if true;
       allow create, update, delete: if isAdmin();
     }
 
-    match /rewards/{rewardId} {
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAdmin()
-        && request.resource.data.keys().hasOnly([
-          "userId",
-          "challengeId",
-          "challengeTitle",
-          "entryId",
-          "rank",
-          "amount",
-          "status",
-          "createdAt",
-          "updatedAt",
-          "paidAt",
-          "paymentMethod",
-          "paymentNote"
-        ])
-        && request.resource.data.userId is string
-        && request.resource.data.challengeId is string
-        && request.resource.data.challengeTitle is string
-        && request.resource.data.entryId is string
-        && request.resource.data.rank is number
-        && request.resource.data.amount is number
-        && request.resource.data.status in ["pending", "verifying", "paid"]
-        && request.resource.data.paymentMethod == "manual_upi";
-      allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "paidAt", "paymentNote", "updatedAt"])
-        && request.resource.data.userId == resource.data.userId
-        && request.resource.data.challengeId == resource.data.challengeId
-        && request.resource.data.challengeTitle == resource.data.challengeTitle
-        && request.resource.data.entryId == resource.data.entryId
-        && request.resource.data.rank == resource.data.rank
-        && request.resource.data.amount == resource.data.amount
-        && request.resource.data.paymentMethod == "manual_upi"
-        && request.resource.data.status in ["pending", "verifying", "paid"];
-      allow delete: if isAdmin();
+    // Admin-only dashboard data
+    match /adminData/{docId} {
+      allow read, write: if isAdmin();
     }
 
-    match /likes/{likeId} {
-      allow read: if true;
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    match /comments/{commentId} {
-      allow read: if true;
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    match /reports/{reportId} {
-      allow create: if signedIn();
-      allow read, update, delete: if isAdmin();
+    // Default block
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
